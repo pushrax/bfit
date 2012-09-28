@@ -116,28 +116,28 @@ uint8_t *bfit_compile(const BfitInsn *insns, uint32_t count, const uint8_t *data
     switch (insns[i].type)
     {
       case '>':
-        code[cl++] = 0x83; // add eax, uint8_t times
+        code[cl++] = 0x83; // add eax, byte times
         code[cl++] = 0xc0;
         code[cl++] = insns[i].times;
         break;
       case '<':
-        code[cl++] = 0x83; // sub eax, uint8_t times
+        code[cl++] = 0x83; // sub eax, byte times
         code[cl++] = 0xe8;
         code[cl++] = insns[i].times;
         break;
       case '+':
-        code[cl++] = 0x80; // add uint8_t [eax], times
+        code[cl++] = 0x80; // add byte [eax], times
         code[cl++] = 0x00;
         code[cl++] = insns[i].times;
         break;
       case '-':
-        code[cl++] = 0x80; // sub uint8_t [eax], times
+        code[cl++] = 0x80; // sub byte [eax], times
         code[cl++] = 0x28;
         code[cl++] = insns[i].times;
         break;
       case '[':
         stack[stackptr++] = cl;
-        code[cl++] = 0x80; // cmp uint8_t [eax], 0
+        code[cl++] = 0x80; // cmp byte [eax], 0
         code[cl++] = 0x38;
         code[cl++] = 0x00;
         code[cl++] = 0x0f; // jz/je offset
@@ -185,8 +185,8 @@ uint8_t *bfit_compile(const BfitInsn *insns, uint32_t count, const uint8_t *data
   // Clean up stack
   code[cl++] = 0x5b; // pop ebx
 
-  // Unwind stack and return [data+eax]
-  code[cl++] = 0x0f; // movzx eax, uint8_t [eax]
+  // Unwind stack and return [eax]
+  code[cl++] = 0x0f; // movzx eax, byte [eax]
   code[cl++] = 0xb6;
   code[cl++] = 0x00;
   code[cl++] = 0xc9; // leave
