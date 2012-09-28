@@ -188,7 +188,7 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
   // Clean up stack
   code[cl++] = 0x5b; // pop ebx
 
-  // Unwind stack and return
+  // Unwind stack and return [data+eax]
   code[cl++] = 0x0f; // movzx eax, byte [data+eax]
   code[cl++] = 0xb6;
   code[cl++] = 0x80;
@@ -255,8 +255,6 @@ int bfit(const char *source, char *input, byte *data)
   bfit_run(code, length, &ret);
   printf("\n");
   printf("Program returned %d\n", ret);
-
-  printf("%d, %d\n", data[0], data[1]);
 
   free(insns);
   free(code);
