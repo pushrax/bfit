@@ -19,10 +19,10 @@
 /*
  * Builds a slightly optimized list of instructions
  */
-BfitInsn *bfit_lex(const char *source, unsigned int *total_out)
+BfitInsn *bfit_lex(const char *source, uint32_t *total_out)
 {
   BfitInsn *insns;
-  unsigned int length = strlen(source), total = 0, index = 0, i, j;
+  uint32_t length = strlen(source), total = 0, index = 0, i, j;
   char c;
 
   if (length <= 0) return NULL;
@@ -69,10 +69,10 @@ BfitInsn *bfit_lex(const char *source, unsigned int *total_out)
 /*
  * "Compiles" a list of instructions into a string of x86 machine code
  */
-byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, const char *input, unsigned int *length)
+uint8_t *bfit_compile(const BfitInsn *insns, uint32_t count, const uint8_t *data, const char *input, uint32_t *length)
 {
-  unsigned int cl = 0, i, offset;
-  byte *code;
+  uint32_t cl = 0, i, offset;
+  uint8_t *code;
 
   // Pre-calculate length of machine code
   for (i = 0; i < count; ++i)
@@ -93,7 +93,7 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
   cl = 0;
 
   // Conditional jump stack
-  unsigned int stack[512], stackptr = 0;
+  uint32_t stack[512], stackptr = 0;
 
   // Assembly comments are in Intel syntax
 
@@ -104,11 +104,11 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
 
   // Set up data pointer
   code[cl++] = 0xb8; // mov eax, data
-  *(unsigned int *)(code + cl) = (unsigned int) data; cl += 4;
+  *(uint32_t *)(code + cl) = (uint32_t) data; cl += 4;
 
   // Set up input pointer
   code[cl++] = 0x68; // push 0
-  *(unsigned int *)(code + cl) = 0; cl += 4;
+  *(uint32_t *)(code + cl) = 0; cl += 4;
 
   // Generate code
   for (i = 0; i < count; ++i)
@@ -116,28 +116,28 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
     switch (insns[i].type)
     {
       case '>':
-        code[cl++] = 0x83; // add eax, byte times
+        code[cl++] = 0x83; // add eax, uint8_t times
         code[cl++] = 0xc0;
         code[cl++] = insns[i].times;
         break;
       case '<':
-        code[cl++] = 0x83; // sub eax, byte times
+        code[cl++] = 0x83; // sub eax, uint8_t times
         code[cl++] = 0xe8;
         code[cl++] = insns[i].times;
         break;
       case '+':
-        code[cl++] = 0x80; // add byte [eax], times
+        code[cl++] = 0x80; // add uint8_t [eax], times
         code[cl++] = 0x00;
         code[cl++] = insns[i].times;
         break;
       case '-':
-        code[cl++] = 0x80; // sub byte [eax], times
+        code[cl++] = 0x80; // sub uint8_t [eax], times
         code[cl++] = 0x28;
         code[cl++] = insns[i].times;
         break;
       case '[':
         stack[stackptr++] = cl;
-        code[cl++] = 0x80; // cmp byte [eax], 0
+        code[cl++] = 0x80; // cmp uint8_t [eax], 0
         code[cl++] = 0x38;
         code[cl++] = 0x00;
         code[cl++] = 0x0f; // jz/je offset
@@ -147,21 +147,21 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
       case ']':
         offset = cl - stack[--stackptr] + 5;
         code[cl++] = 0xe9; // jmp -offset
-        *(int *)(code + cl) = -offset; cl += 4;
+        *(int32_t *)(code + cl) = -offset; cl += 4;
         
         // fill in offset for matching '['
-        *(unsigned int *)(code + stack[stackptr] + 5) = cl - stack[stackptr] - 9;
+        *(uint32_t *)(code + stack[stackptr] + 5) = cl - stack[stackptr] - 9;
         break;
       case '.':
         code[cl++] = 0x50; // push eax
         code[cl++] = 0xba; // mov edx, 1
-        *(unsigned int *)(code + cl) = 1; cl += 4;
+        *(uint32_t *)(code + cl) = 1; cl += 4;
         code[cl++] = 0x89; // mov ecx, eax
         code[cl++] = 0xc1;
         code[cl++] = 0xbb; // mov ebx, 1
-        *(unsigned int *)(code + cl) = 1; cl += 4;
+        *(uint32_t *)(code + cl) = 1; cl += 4;
         code[cl++] = 0xb8; // mov eax, 4
-        *(unsigned int *)(code + cl) = 4; cl += 4;
+        *(uint32_t *)(code + cl) = 4; cl += 4;
         code[cl++] = 0xcd; // int 80h
         code[cl++] = 0x80;
         code[cl++] = 0x58; // pop eax
@@ -172,8 +172,8 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
         code[cl++] = 0x24;
         code[cl++] = 0x8a; // mov bl, [input+ebx]
         code[cl++] = 0x9b;
-        *(unsigned int *)(code + cl) = (unsigned int) input; cl += 4;
-        code[cl++] = 0x88; // mov byte [eax], bl
+        *(uint32_t *)(code + cl) = (uint32_t) input; cl += 4;
+        code[cl++] = 0x88; // mov uint8_t [eax], bl
         code[cl++] = 0x18;
         code[cl++] = 0xff; // inc dword [esp]
         code[cl++] = 0x04;
@@ -186,7 +186,7 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
   code[cl++] = 0x5b; // pop ebx
 
   // Unwind stack and return [data+eax]
-  code[cl++] = 0x0f; // movzx eax, byte [eax]
+  code[cl++] = 0x0f; // movzx eax, uint8_t [eax]
   code[cl++] = 0xb6;
   code[cl++] = 0x00;
   code[cl++] = 0xc9; // leave
@@ -199,16 +199,16 @@ byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, 
 /*
  * Sticks a string of machine code into executable memory and runs it
  */
-int bfit_run(const byte *source, unsigned int length, int *ret)
+int bfit_run(const uint8_t *source, uint32_t length, int32_t *ret)
 {
-  unsigned int pagesize = getpagesize();
+  uint32_t pagesize = getpagesize();
 
   // Allocate enough to overflow into the next page
-  byte *block = malloc(length + pagesize + 1);
+  uint8_t *block = malloc(length + pagesize + 1);
   if (block == NULL) return 2;
 
   // Calculate the page boundary
-  byte *code = (byte *)(((uintptr_t) block + pagesize - 1) & ~(pagesize - 1));
+  uint8_t *code = (uint8_t *)(((uintptr_t) block + pagesize - 1) & ~(pagesize - 1));
 
   // Turn off DEP
   if (mprotect(code, length + 1,  PROT_READ | PROT_WRITE | PROT_EXEC))
@@ -220,7 +220,7 @@ int bfit_run(const byte *source, unsigned int length, int *ret)
   memcpy(code, source, length);
 
   // Run dat shit
-  *ret = ((int (*)()) code)();
+  *ret = ((int32_t (*)()) code)();
 
   free(block);
   return 0;
@@ -229,7 +229,7 @@ int bfit_run(const byte *source, unsigned int length, int *ret)
 /*
  * Run a string of brainfuck
  */
-int bfit(const char *source, char *input, byte *data)
+int bfit(const char *source, const char *input, uint8_t *data)
 {
   char malloced_data = 0;
   if (data == NULL)
@@ -239,13 +239,13 @@ int bfit(const char *source, char *input, byte *data)
     malloced_data = 1;
   }
 
-  unsigned int count, length;
+  uint32_t count, length;
   int ret;
 
   BfitInsn *insns = bfit_lex(source, &count);
   printf("Generated %d instructions\n", count);
 
-  byte *code = bfit_compile(insns, count, data, input, &length);
+  uint8_t *code = bfit_compile(insns, count, data, input, &length);
   printf("Generated %d bytes of machine code\n", length);
 
   bfit_run(code, length, &ret);

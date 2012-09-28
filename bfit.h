@@ -10,20 +10,20 @@
 #ifndef BFIT_H_INCLUDED
 #define BFIT_H_INCLUDED
 
-typedef unsigned char byte;
+#include <stdint.h>
 
 typedef struct
 {
   char type;
-  byte times;
+  uint8_t times;
 } BfitInsn;
 
-BfitInsn *bfit_lex(const char *source, unsigned int *total_out);
+BfitInsn *bfit_lex(const char *source, uint32_t *total_out);
 
-byte *bfit_compile(const BfitInsn *insns, unsigned int count, const byte *data, const char *input, unsigned int *length);
+uint8_t *bfit_compile(const BfitInsn *insns, uint32_t count, const uint8_t *data, const char *input, uint32_t *length);
 
-int bfit_run(const byte *source, unsigned int length, int *ret);
+int bfit_run(const uint8_t *source, uint32_t length, int *ret);
 
-int bfit(const char *source, char *input, byte *data);
+int bfit(const char *source, const char *input, uint8_t *data);
 
 #endif
