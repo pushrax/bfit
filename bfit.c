@@ -15,9 +15,6 @@
 #include <unistd.h>
 #include "bfit.h"
 
-//#define BFIT_X86
-#define BFIT_X64
-
 
 /*
  * Builds a slightly optimized list of instructions

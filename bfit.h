@@ -12,6 +12,18 @@
 
 #include <stdint.h>
 
+#ifdef __GNUC__
+
+#ifdef __i386__
+#define BFIT_X86
+#endif
+
+#ifdef __x86_64__
+#define BFIT_X64
+#endif
+
+#endif
+
 typedef struct
 {
   char type;
