@@ -15,6 +15,9 @@
 #include <unistd.h>
 #include "bfit.h"
 
+//#define BFIT_X86
+#define BFIT_X64
+
 
 /*
  * Builds a slightly optimized list of instructions
@@ -68,11 +71,20 @@ BfitInsn *bfit_lex(const char *source, uint32_t *total_out)
 
 /*
  * "Compiles" a list of instructions into a string of x86 machine code
+ * - Assembly comments are in NASM (Intel) syntax
  */
 uint8_t *bfit_compile(const BfitInsn *insns, uint32_t count, const uint8_t *data, const char *input, uint32_t *length)
 {
   uint32_t cl = 0, i, offset;
-  uint8_t *code;
+
+  // Machine code buffer
+  uint8_t *code, *cp;
+
+  // Conditional jump stack
+  uint8_t *stack[512];
+  uint32_t stackptr = 0;
+
+#ifdef BFIT_X86
 
   // Pre-calculate length of machine code
   for (i = 0; i < count; ++i)
@@ -90,25 +102,20 @@ uint8_t *bfit_compile(const BfitInsn *insns, uint32_t count, const uint8_t *data
   cl += 6; // de-init
 
   code = malloc(cl);
-  cl = 0;
-
-  // Conditional jump stack
-  uint32_t stack[512], stackptr = 0;
-
-  // Assembly comments are in Intel syntax
+  cp = code;
 
   // Set up stack frame
-  code[cl++] = 0x55; // push ebp
-  code[cl++] = 0x89; // mov ebp, esp
-  code[cl++] = 0xe5;
+  *cp++ = 0x55; // push ebp
+  *cp++ = 0x89; // mov ebp, esp
+  *cp++ = 0xe5;
 
   // Set up data pointer
-  code[cl++] = 0xb8; // mov eax, data
-  *(uint32_t *)(code + cl) = (uint32_t) data; cl += 4;
+  *cp++ = 0xb8; // mov eax, data
+  *(uint32_t *) cp = (uint32_t) data; cp += 4;
 
   // Set up input pointer
-  code[cl++] = 0x68; // push 0
-  *(uint32_t *)(code + cl) = 0; cl += 4;
+  *cp++ = 0x68; // push 0
+  *(uint32_t *) cp = 0; cp += 4;
 
   // Generate code
   for (i = 0; i < count; ++i)
@@ -116,83 +123,214 @@ uint8_t *bfit_compile(const BfitInsn *insns, uint32_t count, const uint8_t *data
     switch (insns[i].type)
     {
       case '>':
-        code[cl++] = 0x83; // add eax, byte times
-        code[cl++] = 0xc0;
-        code[cl++] = insns[i].times;
+        *cp++ = 0x83; // add eax, byte times
+        *cp++ = 0xc0;
+        *cp++ = insns[i].times;
         break;
       case '<':
-        code[cl++] = 0x83; // sub eax, byte times
-        code[cl++] = 0xe8;
-        code[cl++] = insns[i].times;
+        *cp++ = 0x83; // sub eax, byte times
+        *cp++ = 0xe8;
+        *cp++ = insns[i].times;
         break;
       case '+':
-        code[cl++] = 0x80; // add byte [eax], times
-        code[cl++] = 0x00;
-        code[cl++] = insns[i].times;
+        *cp++ = 0x80; // add byte [eax], times
+        *cp++ = 0x00;
+        *cp++ = insns[i].times;
         break;
       case '-':
-        code[cl++] = 0x80; // sub byte [eax], times
-        code[cl++] = 0x28;
-        code[cl++] = insns[i].times;
+        *cp++ = 0x80; // sub byte [eax], times
+        *cp++ = 0x28;
+        *cp++ = insns[i].times;
         break;
       case '[':
-        stack[stackptr++] = cl;
-        code[cl++] = 0x80; // cmp byte [eax], 0
-        code[cl++] = 0x38;
-        code[cl++] = 0x00;
-        code[cl++] = 0x0f; // jz/je offset
-        code[cl++] = 0x84;
-        cl += 4; // offset filled in by ']'
+        stack[stackptr++] = cp;
+        *cp++ = 0x80; // cmp byte [eax], 0
+        *cp++ = 0x38;
+        *cp++ = 0x00;
+        *cp++ = 0x0f; // jz/je offset
+        *cp++ = 0x84;
+        cp += 4; // offset filled in by ']'
         break;
       case ']':
-        offset = cl - stack[--stackptr] + 5;
-        code[cl++] = 0xe9; // jmp -offset
-        *(int32_t *)(code + cl) = -offset; cl += 4;
+        offset = cp - stack[--stackptr] + 5;
+        *cp++ = 0xe9; // jmp -offset
+        *(int32_t *) cp = -offset; cp += 4;
         
         // fill in offset for matching '['
-        *(uint32_t *)(code + stack[stackptr] + 5) = cl - stack[stackptr] - 9;
+        *(uint32_t *)(stack[stackptr] + 5) = cp - stack[stackptr] - 9;
         break;
       case '.':
-        code[cl++] = 0x50; // push eax
-        code[cl++] = 0xba; // mov edx, 1
-        *(uint32_t *)(code + cl) = 1; cl += 4;
-        code[cl++] = 0x89; // mov ecx, eax
-        code[cl++] = 0xc1;
-        code[cl++] = 0xbb; // mov ebx, 1
-        *(uint32_t *)(code + cl) = 1; cl += 4;
-        code[cl++] = 0xb8; // mov eax, 4
-        *(uint32_t *)(code + cl) = 4; cl += 4;
-        code[cl++] = 0xcd; // int 80h
-        code[cl++] = 0x80;
-        code[cl++] = 0x58; // pop eax
+        *cp++ = 0x50; // push eax
+        *cp++ = 0xba; // mov edx, 1
+        *(uint32_t *) cp = 1; cp += 4;
+        *cp++ = 0x89; // mov ecx, eax
+        *cp++ = 0xc1;
+        *cp++ = 0xbb; // mov ebx, 1
+        *(uint32_t *) cp = 1; cp += 4;
+        *cp++ = 0xb8; // mov eax, 4
+        *(uint32_t *) cp = 4; cp += 4;
+        *cp++ = 0xcd; // int 80h
+        *cp++ = 0x80;
+        *cp++ = 0x58; // pop eax
         break;
       case ',':
-        code[cl++] = 0x8b; // mov ebx, [esp]
-        code[cl++] = 0x1c;
-        code[cl++] = 0x24;
-        code[cl++] = 0x8a; // mov bl, [input+ebx]
-        code[cl++] = 0x9b;
-        *(uint32_t *)(code + cl) = (uint32_t) input; cl += 4;
-        code[cl++] = 0x88; // mov uint8_t [eax], bl
-        code[cl++] = 0x18;
-        code[cl++] = 0xff; // inc dword [esp]
-        code[cl++] = 0x04;
-        code[cl++] = 0x24;
+        *cp++ = 0x8b; // mov ebx, [esp]
+        *cp++ = 0x1c;
+        *cp++ = 0x24;
+        *cp++ = 0x8a; // mov bl, [input+ebx]
+        *cp++ = 0x9b;
+        *(uint32_t *) cp = (uint32_t) input; cp += 4;
+        *cp++ = 0x88; // mov uint8_t [eax], bl
+        *cp++ = 0x18;
+        *cp++ = 0xff; // inc dword [esp]
+        *cp++ = 0x04;
+        *cp++ = 0x24;
         break;
     }
   }
 
   // Clean up stack
-  code[cl++] = 0x5b; // pop ebx
+  *cp++ = 0x5b; // pop ebx
 
   // Unwind stack and return [eax]
-  code[cl++] = 0x0f; // movzx eax, byte [eax]
-  code[cl++] = 0xb6;
-  code[cl++] = 0x00;
-  code[cl++] = 0xc9; // leave
-  code[cl++] = 0xc3; // ret
+  *cp++ = 0x0f; // movzx eax, byte [eax]
+  *cp++ = 0xb6;
+  *cp++ = 0x00;
+  *cp++ = 0xc9; // leave
+  *cp++ = 0xc3; // ret
+#endif
 
-  *length = cl;
+#ifdef BFIT_X64
+
+  // Pre-calculate length of machine code
+  for (i = 0; i < count; ++i)
+  {
+    char type = insns[i].type;
+    if (type == '>' || type == '<') cl += 4;
+    else if (type == '+' || type == '-') cl += 3;
+    else if (type == '[') cl += 9;
+    else if (type == ']') cl += 5;
+    else if (type == '.') cl += 37;
+    else if (type == ',') cl += 12;
+  }
+
+  cl += 25; // init
+  cl += 7; // de-init
+
+  code = malloc(cl);
+  cp = code;
+
+  // Set up stack frame
+  *cp++ = 0x55; // push rbp
+  *cp++ = 0x48; // mov rbp, rsp
+  *cp++ = 0x89;
+  *cp++ = 0xe5;
+
+  // Set up data pointer
+  *cp++ = 0x48; // mov rax, data
+  *cp++ = 0xb8;
+  *(uint64_t *) cp = (uint64_t) data; cp += 8;
+
+  // Set up input pointer
+  *cp++ = 0x48; // mov rbx, input
+  *cp++ = 0xbb;
+  *(uint64_t *) cp = (uint64_t) input; cp += 8;
+  *cp++ = 0x53; // push rbx
+
+  // Generate code
+  for (i = 0; i < count; ++i)
+  {
+    switch (insns[i].type)
+    {
+      case '>':
+        *cp++ = 0x48; // add rax, byte times
+        *cp++ = 0x83;
+        *cp++ = 0xc0;
+        *cp++ = insns[i].times;
+        break;
+      case '<':
+        *cp++ = 0x48; // sub rax, byte times
+        *cp++ = 0x83;
+        *cp++ = 0xe8;
+        *cp++ = insns[i].times;
+        break;
+      case '+':
+        *cp++ = 0x80; // add byte [rax], times
+        *cp++ = 0x00;
+        *cp++ = insns[i].times;
+        break;
+      case '-':
+        *cp++ = 0x80; // sub byte [rax], times
+        *cp++ = 0x28;
+        *cp++ = insns[i].times;
+        break;
+      case '[':
+        stack[stackptr++] = cp;
+        *cp++ = 0x80; // cmp byte [rax], 0
+        *cp++ = 0x38;
+        *cp++ = 0x00;
+        *cp++ = 0x0f; // jz/je offset
+        *cp++ = 0x84;
+        cp += 4; // offset filled in by ']'
+        break;
+      case ']':
+        offset = cp - stack[--stackptr] + 5;
+        *cp++ = 0xe9; // jmp -offset
+        *(int32_t *) cp = -offset; cp += 4;
+        
+        // fill in offset for matching '['
+        *(uint32_t *)(stack[stackptr] + 5) = cp - stack[stackptr] - 9;
+        break;
+      case '.':
+        *cp++ = 0x50; // push rax
+        *cp++ = 0x48; // mov rdi, 1   ; stdout
+        *cp++ = 0xbf;
+        *(uint64_t *) cp = 1; cp += 8;
+        *cp++ = 0x48; // mov rsi, rax ; data
+        *cp++ = 0x89;
+        *cp++ = 0xc6;
+        *cp++ = 0x48; // mov rdx, 1   ; length
+        *cp++ = 0xba;
+        *(uint64_t *) cp = 1; cp += 8;
+        *cp++ = 0x48; // mov rax, 1   ; sys_write
+        *cp++ = 0xb8;
+        *(uint64_t *) cp = 1; cp += 8;
+        *cp++ = 0x0f; // syscall
+        *cp++ = 0x05;
+        *cp++ = 0x58; // pop eax
+        break;
+      case ',':
+        *cp++ = 0x48; // mov rbx, [rsp] ; input
+        *cp++ = 0x8b;
+        *cp++ = 0x1c;
+        *cp++ = 0x24;
+        *cp++ = 0x8a; // mov bl, [rbx]
+        *cp++ = 0x1b;
+        *cp++ = 0x88; // mov byte [rax], bl
+        *cp++ = 0x18;
+        *cp++ = 0x48; // inc qword [rsp]
+        *cp++ = 0xff;
+        *cp++ = 0x04;
+        *cp++ = 0x24;
+        break;
+    }
+  }
+
+  // Clean up stack
+  *cp++ = 0x5b; // pop rbx
+
+  // Unwind stack and return [eax]
+  *cp++ = 0x48; // movzx eax, byte [eax]
+  *cp++ = 0x0f;
+  *cp++ = 0xb6;
+  *cp++ = 0x00;
+  *cp++ = 0xc9; // leave
+  *cp++ = 0xc3; // ret
+
+#endif
+
+
+  *length = (uint32_t)(cp - code);
   return code;
 }
 
@@ -220,7 +358,7 @@ int bfit_run(const uint8_t *source, uint32_t length, int32_t *ret)
   memcpy(code, source, length);
 
   // Run dat shit
-  *ret = ((int32_t (*)()) code)();
+  *ret = ((int64_t (*)()) code)();
 
   free(block);
   return 0;
