@@ -355,7 +355,14 @@ int bfit_run(const uint8_t *source, uint32_t length, int32_t *ret)
   memcpy(code, source, length);
 
   // Run dat shit
+
+  #ifdef BFIT_X86
+  *ret = ((int32_t (*)()) code)();
+  #endif
+
+  #ifdef BFIT_X64
   *ret = ((int64_t (*)()) code)();
+  #endif
 
   free(block);
   return 0;
